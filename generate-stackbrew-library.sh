@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -Eeuo pipefail
 
 self="$(basename "$BASH_SOURCE")"
 cd "$(dirname "$(readlink -f "$BASH_SOURCE")")"
@@ -40,11 +40,11 @@ join() {
 	echo "${out#$sep}"
 }
 
-latest=$(curl -sSL 'https://nextcloud.com/changelog/' |tac|tac \
-	   | grep -o "\(Version\|Release\)\s\+[[:digit:]]\+\(.[[:digit:]]\+\)\+" \
-	   | awk '{ print $2 }' \
-	   | sort -uV \
-	   | tail -1)
+latest=$( curl -fsSL 'https://download.nextcloud.com/server/releases/' |tac|tac| \
+	grep -oE 'nextcloud-[[:digit:]]+(.[[:digit:]]+)+' | \
+	grep -oE '[[:digit:]]+(.[[:digit:]]+)+' | \
+	sort -uV | \
+	tail -1 )
 
 # Generate each of the tags.
 versions=( */ )
@@ -73,6 +73,7 @@ for version in "${versions[@]}"; do
 		cat <<-EOE
 
 			Tags: $(join ', ' "${variantAliases[@]}")
+			Architectures: amd64, arm32v5, arm32v7, arm64v8, i386, ppc64le, s390x
 			GitCommit: $commit
 			Directory: $version/$variant
 		EOE

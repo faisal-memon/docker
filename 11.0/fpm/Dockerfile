@@ -1,9 +1,10 @@
 FROM resin/rpi-raspbian:latest
 
-
 RUN apt-get update && apt-get install -y \
+	rsync \
 	bzip2 \
 	libcurl4-openssl-dev \
+        libpng12-dev \
         libpng-dev \
 	libfreetype6-dev \
 	libicu-dev \
@@ -54,7 +55,11 @@ RUN apt-get update && apt-get install -y \
 #	&& pecl install redis-2.2.8 \
 #	&& docker-php-ext-enable apcu memcached redis
 
-ENV NEXTCLOUD_VERSION 11.0.1
+ENV NEXTCLOUD_VERSION 11.0.5
+
+RUN mkdir -p /var/www/html
+RUN chown -R www-data:root /var/www/html && \
+    chmod -R g=u /var/www/html
 VOLUME /var/www/html
 
 RUN curl -k -fsSL -o nextcloud.tar.bz2 \
@@ -66,12 +71,17 @@ RUN curl -k -fsSL -o nextcloud.tar.bz2 \
  && gpg --keyserver ha.pool.sks-keyservers.net --recv-keys 28806A878AE423A28372792ED75899B9A724937A \
  && gpg --batch --verify nextcloud.tar.bz2.asc nextcloud.tar.bz2 \
  && rm -r "$GNUPGHOME" nextcloud.tar.bz2.asc \
- && tar -xjf nextcloud.tar.bz2 -C /var/www/ \
- && rm nextcloud.tar.bz2
+ && tar -xjf nextcloud.tar.bz2 -C /usr/src/ \
+ && rm nextcloud.tar.bz2 \
+ && rm -rf /usr/src/nextcloud/updater \
+ && mkdir -p /usr/src/nextcloud/data \
+ && mkdir -p /usr/src/nextcloud/custom_apps \
+ && chmod +x /usr/src/nextcloud/occ
 
 RUN service php7.0-fpm start
 
 COPY docker-entrypoint.sh /entrypoint.sh
+COPY config/* /usr/src/nextcloud/config/
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["php7.0-fpm", "-F"]

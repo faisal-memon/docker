@@ -1,6 +1,7 @@
-FROM php:5.6-%%VARIANT%%
+FROM php:7.1-%%VARIANT%%
 
 RUN apt-get update && apt-get install -y \
+  rsync \
   bzip2 \
   libcurl4-openssl-dev \
   libfreetype6-dev \
@@ -15,31 +16,36 @@ RUN apt-get update && apt-get install -y \
   && rm -rf /var/lib/apt/lists/*
 
 # https://docs.nextcloud.com/server/9/admin_manual/installation/source_installation.html
-RUN docker-php-ext-configure gd --with-png-dir=/usr --with-jpeg-dir=/usr \
-  && docker-php-ext-configure ldap --with-libdir=lib/x86_64-linux-gnu \
-  && docker-php-ext-install gd exif intl mbstring mcrypt ldap mysql opcache pdo_mysql pdo_pgsql pgsql zip
+RUN debMultiarch="$(dpkg-architecture --query DEB_BUILD_MULTIARCH)" \
+  && docker-php-ext-configure gd --with-png-dir=/usr --with-jpeg-dir=/usr \
+  && docker-php-ext-configure ldap --with-libdir="lib/$debMultiarch" \
+  && docker-php-ext-install gd exif intl mbstring mcrypt ldap mysqli opcache pdo_mysql pdo_pgsql pgsql zip pcntl
 
 # set recommended PHP.ini settings
-# see https://secure.php.net/manual/en/opcache.installation.php
+# see https://docs.nextcloud.com/server/12/admin_manual/configuration_server/server_tuning.html#enable-php-opcache
 RUN { \
-    echo 'opcache.memory_consumption=128'; \
-    echo 'opcache.interned_strings_buffer=8'; \
-    echo 'opcache.max_accelerated_files=4000'; \
-    echo 'opcache.revalidate_freq=60'; \
-    echo 'opcache.fast_shutdown=1'; \
-    echo 'opcache.enable_cli=1'; \
+  echo 'opcache.enable=1'; \
+  echo 'opcache.enable_cli=1'; \
+  echo 'opcache.interned_strings_buffer=8'; \
+  echo 'opcache.max_accelerated_files=10000'; \
+  echo 'opcache.memory_consumption=128'; \
+  echo 'opcache.save_comments=1'; \
+  echo 'opcache.revalidate_freq=1'; \
   } > /usr/local/etc/php/conf.d/opcache-recommended.ini
 RUN a2enmod rewrite
 
 # PECL extensions
 RUN set -ex \
- && pecl install APCu-4.0.10 \
- && pecl install memcached-2.2.0 \
- && pecl install redis-2.2.8 \
+ && pecl install APCu-5.1.8 \
+ && pecl install memcached-3.0.4 \
+ && pecl install redis-3.1.4 \
  && docker-php-ext-enable apcu redis memcached
 RUN a2enmod rewrite
 
 ENV NEXTCLOUD_VERSION %%VERSION%%
+
+RUN chown -R www-data:root /var/www/html && \
+    chmod -R g=u /var/www/html
 VOLUME /var/www/html
 
 RUN curl -fsSL -o nextcloud.tar.bz2 \
@@ -52,9 +58,14 @@ RUN curl -fsSL -o nextcloud.tar.bz2 \
  && gpg --batch --verify nextcloud.tar.bz2.asc nextcloud.tar.bz2 \
  && rm -r "$GNUPGHOME" nextcloud.tar.bz2.asc \
  && tar -xjf nextcloud.tar.bz2 -C /usr/src/ \
- && rm nextcloud.tar.bz2
+ && rm nextcloud.tar.bz2 \
+ && rm -rf /usr/src/nextcloud/updater \
+ && mkdir -p /usr/src/nextcloud/data \
+ && mkdir -p /usr/src/nextcloud/custom_apps \
+ && chmod +x /usr/src/nextcloud/occ
 
 COPY docker-entrypoint.sh /entrypoint.sh
+COPY config/* /usr/src/nextcloud/config/
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["%%CMD%%"]
